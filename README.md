@@ -1,7 +1,7 @@
 # Book API (Gin + Go)
 
 This is a small REST API project for managing books, authors, and categories.
-Data is stored in memory (`map` + `sync.RWMutex`), so everything resets after restart.
+Data is stored in PostgreSQL via GORM.
 
 ## What this project does
 
@@ -28,6 +28,28 @@ Data is stored in memory (`map` + `sync.RWMutex`), so everything resets after re
 
 ## How to run
 
+1) Prepare PostgreSQL (local or Docker) and create database, for example `book_api`.
+
+2) Set environment variables (PowerShell example):
+
+```bash
+$env:DB_HOST="localhost"
+$env:DB_PORT="5432"
+$env:DB_USER="postgres"
+$env:DB_PASSWORD="postgres"
+$env:DB_NAME="book_api"
+$env:DB_SSLMODE="disable"
+$env:DB_TIMEZONE="UTC"
+```
+
+You can also use one connection string:
+
+```bash
+$env:DATABASE_URL="host=localhost user=postgres password=postgres dbname=book_api port=5432 sslmode=disable TimeZone=UTC"
+```
+
+3) Run app:
+
 ```bash
 go mod tidy
 go run .
@@ -40,7 +62,7 @@ Server runs on `:8080`.
 Set JWT secret (recommended):
 
 ```bash
-set JWT_SECRET=your-super-secret
+$env:JWT_SECRET="your-super-secret"
 ```
 
 If `JWT_SECRET` is not set, app uses fallback secret `dev-secret-change-me`.
@@ -233,6 +255,6 @@ No body.
 
 ## Notes
 
-- This project uses in-memory storage, so no database setup is needed.
+- GORM runs `AutoMigrate` on startup for `authors`, `categories`, `books`, `users`.
 - IDs are auto-incremented.
 - If `author_id` or `category_id` does not exist, creating/updating a book returns a `400` error.

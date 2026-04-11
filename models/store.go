@@ -1,23 +1,14 @@
 package models
 
 import (
-	"sort"
+	"errors"
 	"strings"
-	"sync"
+
+	"gorm.io/gorm"
 )
 
 type Store struct {
-	mu sync.RWMutex
-
-	books      map[int]Book
-	authors    map[int]Author
-	categories map[int]Category
-	users      map[string]User
-
-	nextBookID     int
-	nextAuthorID   int
-	nextCategoryID int
-	nextUserID     int
+	db *gorm.DB
 }
 
 type BookFilter struct {
@@ -36,23 +27,11 @@ type PaginatedBooks struct {
 	TotalPages int    `json:"total_pages"`
 }
 
-func NewStore() *Store {
-	return &Store{
-		books:          make(map[int]Book),
-		authors:        make(map[int]Author),
-		categories:     make(map[int]Category),
-		users:          make(map[string]User),
-		nextBookID:     1,
-		nextAuthorID:   1,
-		nextCategoryID: 1,
-		nextUserID:     1,
-	}
+func NewStore(db *gorm.DB) *Store {
+	return &Store{db: db}
 }
 
 func (s *Store) ListBooks(filter BookFilter) PaginatedBooks {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	if filter.Page < 1 {
 		filter.Page = 1
 	}
@@ -63,27 +42,13 @@ func (s *Store) ListBooks(filter BookFilter) PaginatedBooks {
 		filter.Limit = 100
 	}
 
-	filtered := make([]Book, 0)
-	titleNeedle := strings.ToLower(strings.TrimSpace(filter.Title))
+	query := s.applyBookFilters(s.db.Model(&Book{}), filter)
 
-	for _, b := range s.books {
-		if filter.AuthorID > 0 && b.AuthorID != filter.AuthorID {
-			continue
-		}
-		if filter.CategoryID > 0 && b.CategoryID != filter.CategoryID {
-			continue
-		}
-		if titleNeedle != "" && !strings.Contains(strings.ToLower(b.Title), titleNeedle) {
-			continue
-		}
-		filtered = append(filtered, b)
+	var total64 int64
+	if err := query.Count(&total64).Error; err != nil {
+		total64 = 0
 	}
-
-	sort.Slice(filtered, func(i, j int) bool {
-		return filtered[i].ID < filtered[j].ID
-	})
-
-	total := len(filtered)
+	total := int(total64)
 	totalPages := 0
 	if total > 0 {
 		totalPages = (total + filter.Limit - 1) / filter.Limit
@@ -93,12 +58,15 @@ func (s *Store) ListBooks(filter BookFilter) PaginatedBooks {
 	if start > total {
 		start = total
 	}
-	end := start + filter.Limit
-	if end > total {
-		end = total
-	}
 
-	pageData := filtered[start:end]
+	pageData := make([]Book, 0)
+	if err := s.applyBookFilters(s.db, filter).
+		Order("id ASC").
+		Offset(start).
+		Limit(filter.Limit).
+		Find(&pageData).Error; err != nil {
+		pageData = []Book{}
+	}
 
 	return PaginatedBooks{
 		Data:       pageData,
@@ -110,140 +78,130 @@ func (s *Store) ListBooks(filter BookFilter) PaginatedBooks {
 }
 
 func (s *Store) GetBook(id int) (Book, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	b, ok := s.books[id]
-	return b, ok
+	var book Book
+	if err := s.db.First(&book, id).Error; err != nil {
+		return Book{}, false
+	}
+	return book, true
 }
 
 func (s *Store) CreateBook(input CreateBookInput) (Book, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if _, ok := s.authors[input.AuthorID]; !ok {
+	if !s.recordExists(&Author{}, input.AuthorID) {
 		return Book{}, false
 	}
-	if _, ok := s.categories[input.CategoryID]; !ok {
+	if !s.recordExists(&Category{}, input.CategoryID) {
 		return Book{}, false
 	}
 
 	book := Book{
-		ID:         s.nextBookID,
 		Title:      strings.TrimSpace(input.Title),
 		AuthorID:   input.AuthorID,
 		CategoryID: input.CategoryID,
 		Price:      input.Price,
 	}
-	s.books[book.ID] = book
-	s.nextBookID++
+
+	if err := s.db.Create(&book).Error; err != nil {
+		return Book{}, false
+	}
+
 	return book, true
 }
 
 func (s *Store) UpdateBook(id int, input UpdateBookInput) (Book, string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if _, ok := s.books[id]; !ok {
+	var book Book
+	if err := s.db.First(&book, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return Book{}, "not_found"
+		}
 		return Book{}, "not_found"
 	}
-	if _, ok := s.authors[input.AuthorID]; !ok {
+
+	if !s.recordExists(&Author{}, input.AuthorID) {
 		return Book{}, "author_not_found"
 	}
-	if _, ok := s.categories[input.CategoryID]; !ok {
+	if !s.recordExists(&Category{}, input.CategoryID) {
 		return Book{}, "category_not_found"
 	}
 
-	book := Book{
-		ID:         id,
-		Title:      strings.TrimSpace(input.Title),
-		AuthorID:   input.AuthorID,
-		CategoryID: input.CategoryID,
-		Price:      input.Price,
+	book.Title = strings.TrimSpace(input.Title)
+	book.AuthorID = input.AuthorID
+	book.CategoryID = input.CategoryID
+	book.Price = input.Price
+
+	if err := s.db.Save(&book).Error; err != nil {
+		return Book{}, "not_found"
 	}
-	s.books[id] = book
+
 	return book, ""
 }
 
 func (s *Store) DeleteBook(id int) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.books[id]; !ok {
+	result := s.db.Delete(&Book{}, id)
+	if result.Error != nil {
 		return false
 	}
-	delete(s.books, id)
-	return true
+	return result.RowsAffected > 0
 }
 
 func (s *Store) ListAuthors() []Author {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]Author, 0, len(s.authors))
-	for _, a := range s.authors {
-		out = append(out, a)
+	out := make([]Author, 0)
+	if err := s.db.Order("id ASC").Find(&out).Error; err != nil {
+		return []Author{}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
 
 func (s *Store) CreateAuthor(input CreateAuthorInput) Author {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	a := Author{ID: s.nextAuthorID, Name: strings.TrimSpace(input.Name)}
-	s.authors[a.ID] = a
-	s.nextAuthorID++
+	a := Author{Name: strings.TrimSpace(input.Name)}
+	_ = s.db.Create(&a).Error
 	return a
 }
 
 func (s *Store) ListCategories() []Category {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]Category, 0, len(s.categories))
-	for _, c := range s.categories {
-		out = append(out, c)
+	out := make([]Category, 0)
+	if err := s.db.Order("id ASC").Find(&out).Error; err != nil {
+		return []Category{}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
 }
 
 func (s *Store) CreateCategory(input CreateCategoryInput) Category {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	c := Category{ID: s.nextCategoryID, Name: strings.TrimSpace(input.Name)}
-	s.categories[c.ID] = c
-	s.nextCategoryID++
+	c := Category{Name: strings.TrimSpace(input.Name)}
+	_ = s.db.Create(&c).Error
 	return c
 }
 
 func (s *Store) CreateUser(input CreateUserInput) (User, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
 	username := strings.TrimSpace(input.Username)
 	normalizedUsername := strings.ToLower(username)
 
-	if _, exists := s.users[normalizedUsername]; exists {
+	var existing int64
+	if err := s.db.Model(&User{}).
+		Where("LOWER(username) = ?", normalizedUsername).
+		Count(&existing).Error; err != nil {
+		return User{}, false
+	}
+	if existing > 0 {
 		return User{}, false
 	}
 
 	user := User{
-		ID:       s.nextUserID,
 		Username: username,
 		Password: input.Password,
 	}
 
-	s.users[normalizedUsername] = user
-	s.nextUserID++
+	if err := s.db.Create(&user).Error; err != nil {
+		return User{}, false
+	}
 
 	return user, true
 }
 
 func (s *Store) AuthenticateUser(input LoginInput) (User, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
 	normalizedUsername := strings.ToLower(strings.TrimSpace(input.Username))
-	user, exists := s.users[normalizedUsername]
-	if !exists {
+
+	var user User
+	if err := s.db.Where("LOWER(username) = ?", normalizedUsername).First(&user).Error; err != nil {
 		return User{}, false
 	}
 
@@ -252,4 +210,28 @@ func (s *Store) AuthenticateUser(input LoginInput) (User, bool) {
 	}
 
 	return user, true
+}
+
+func (s *Store) applyBookFilters(query *gorm.DB, filter BookFilter) *gorm.DB {
+	filtered := query.Model(&Book{})
+
+	if filter.AuthorID > 0 {
+		filtered = filtered.Where("author_id = ?", filter.AuthorID)
+	}
+	if filter.CategoryID > 0 {
+		filtered = filtered.Where("category_id = ?", filter.CategoryID)
+	}
+
+	titleNeedle := strings.TrimSpace(filter.Title)
+	if titleNeedle != "" {
+		filtered = filtered.Where("LOWER(title) LIKE ?", "%"+strings.ToLower(titleNeedle)+"%")
+	}
+
+	return filtered
+}
+
+func (s *Store) recordExists(model interface{}, id int) bool {
+	var count int64
+	err := s.db.Model(model).Where("id = ?", id).Count(&count).Error
+	return err == nil && count > 0
 }
