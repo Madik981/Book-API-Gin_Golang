@@ -1,9 +1,9 @@
 package models
 
 type User struct {
-	ID       int    `json:"id"`
-	Username string `json:"username"`
-	Password string `json:"-"`
+	ID       int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	Username string `json:"username" gorm:"size:100;not null;uniqueIndex"`
+	Password string `json:"-" gorm:"not null"`
 }
 
 type CreateUserInput struct {
