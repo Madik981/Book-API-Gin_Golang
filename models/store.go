@@ -12,10 +12,12 @@ type Store struct {
 	books      map[int]Book
 	authors    map[int]Author
 	categories map[int]Category
+	users      map[string]User
 
 	nextBookID     int
 	nextAuthorID   int
 	nextCategoryID int
+	nextUserID     int
 }
 
 type BookFilter struct {
@@ -39,9 +41,11 @@ func NewStore() *Store {
 		books:          make(map[int]Book),
 		authors:        make(map[int]Author),
 		categories:     make(map[int]Category),
+		users:          make(map[string]User),
 		nextBookID:     1,
 		nextAuthorID:   1,
 		nextCategoryID: 1,
+		nextUserID:     1,
 	}
 }
 
@@ -208,4 +212,44 @@ func (s *Store) CreateCategory(input CreateCategoryInput) Category {
 	s.categories[c.ID] = c
 	s.nextCategoryID++
 	return c
+}
+
+func (s *Store) CreateUser(input CreateUserInput) (User, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	username := strings.TrimSpace(input.Username)
+	normalizedUsername := strings.ToLower(username)
+
+	if _, exists := s.users[normalizedUsername]; exists {
+		return User{}, false
+	}
+
+	user := User{
+		ID:       s.nextUserID,
+		Username: username,
+		Password: input.Password,
+	}
+
+	s.users[normalizedUsername] = user
+	s.nextUserID++
+
+	return user, true
+}
+
+func (s *Store) AuthenticateUser(input LoginInput) (User, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	normalizedUsername := strings.ToLower(strings.TrimSpace(input.Username))
+	user, exists := s.users[normalizedUsername]
+	if !exists {
+		return User{}, false
+	}
+
+	if user.Password != input.Password {
+		return User{}, false
+	}
+
+	return user, true
 }
