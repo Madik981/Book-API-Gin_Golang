@@ -5,12 +5,18 @@ import (
 
 	"Book-API-Gin_Golang/handlers"
 	"Book-API-Gin_Golang/models"
+
 	"github.com/gin-gonic/gin"
 )
 
 func main() {
 	r := gin.Default()
-	store := models.NewStore()
+	db, err := models.NewPostgresDBFromEnv()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	store := models.NewStore(db)
 
 	handlers.RegisterRoutes(r, store)
 
