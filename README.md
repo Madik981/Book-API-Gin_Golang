@@ -5,18 +5,21 @@ Data is stored in memory (`map` + `sync.RWMutex`), so everything resets after re
 
 ## What this project does
 
+- Authentication endpoints:
+  - `POST /auth/register`
+  - `POST /auth/login`
 - Book endpoints:
   - `GET /books` (with pagination + filters)
-  - `POST /books`
+  - `POST /books` (protected)
   - `GET /books/:id`
-  - `PUT /books/:id`
-  - `DELETE /books/:id`
+  - `PUT /books/:id` (protected)
+  - `DELETE /books/:id` (protected)
 - Author endpoints:
   - `GET /authors`
-  - `POST /authors`
+  - `POST /authors` (protected)
 - Category endpoints:
   - `GET /categories`
-  - `POST /categories`
+  - `POST /categories` (protected)
 - Validation:
   - required fields
   - `author_id > 0`
@@ -31,6 +34,53 @@ go run .
 ```
 
 Server runs on `:8080`.
+
+## Authentication
+
+Set JWT secret (recommended):
+
+```bash
+set JWT_SECRET=your-super-secret
+```
+
+If `JWT_SECRET` is not set, app uses fallback secret `dev-secret-change-me`.
+
+### Register user
+
+**Endpoint:** `POST /auth/register`
+
+**Request body**
+```json
+{
+  "username": "admin",
+  "password": "secret123"
+}
+```
+
+### Login user
+
+**Endpoint:** `POST /auth/login`
+
+**Request body**
+```json
+{
+  "username": "admin",
+  "password": "secret123"
+}
+```
+
+**Response (200)**
+```json
+{
+  "token": "<jwt>",
+  "token_type": "Bearer",
+  "expires_in": 86400
+}
+```
+
+Use token for protected endpoints:
+
+`Authorization: Bearer <jwt>`
 
 ## Books query params
 
