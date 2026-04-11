@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -48,10 +49,37 @@ func AuthMiddleware(jwtSecret []byte) gin.HandlerFunc {
 		if username, ok := claims["username"].(string); ok {
 			c.Set("username", username)
 		}
-		if userID, ok := claims["sub"]; ok {
+		if userID, ok := parseClaimToInt(claims["sub"]); ok && userID > 0 {
 			c.Set("user_id", userID)
+		} else {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+			c.Abort()
+			return
 		}
 
 		c.Next()
+	}
+}
+
+func parseClaimToInt(value interface{}) (int, bool) {
+	switch v := value.(type) {
+	case float64:
+		return int(v), true
+	case float32:
+		return int(v), true
+	case int:
+		return v, true
+	case int64:
+		return int(v), true
+	case int32:
+		return int(v), true
+	case string:
+		parsed, err := strconv.Atoi(strings.TrimSpace(v))
+		if err != nil {
+			return 0, false
+		}
+		return parsed, true
+	default:
+		return 0, false
 	}
 }
