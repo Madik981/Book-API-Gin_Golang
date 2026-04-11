@@ -110,3 +110,83 @@ func (h *BookHandler) DeleteBook(c *gin.Context) {
 
 	c.Status(http.StatusNoContent)
 }
+
+func (h *BookHandler) ListFavoriteBooks(c *gin.Context) {
+	userID, ok := getUserIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token subject"})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+
+	result := h.store.ListFavoriteBooks(userID, page, limit)
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *BookHandler) AddFavoriteBook(c *gin.Context) {
+	userID, ok := getUserIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token subject"})
+		return
+	}
+
+	bookID, err := strconv.Atoi(c.Param("bookId"))
+	if err != nil || bookID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book id"})
+		return
+	}
+
+	addErr := h.store.AddFavoriteBook(userID, bookID)
+	switch addErr {
+	case "":
+		c.Status(http.StatusNoContent)
+	case "book_not_found":
+		c.JSON(http.StatusNotFound, gin.H{"error": "book not found"})
+	case "already_exists":
+		c.JSON(http.StatusConflict, gin.H{"error": "book is already in favorites"})
+	case "user_not_found":
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+	default:
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+	}
+}
+
+func (h *BookHandler) RemoveFavoriteBook(c *gin.Context) {
+	userID, ok := getUserIDFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token subject"})
+		return
+	}
+
+	bookID, err := strconv.Atoi(c.Param("bookId"))
+	if err != nil || bookID <= 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book id"})
+		return
+	}
+
+	removeErr := h.store.RemoveFavoriteBook(userID, bookID)
+	switch removeErr {
+	case "":
+		c.Status(http.StatusNoContent)
+	case "not_found":
+		c.JSON(http.StatusNotFound, gin.H{"error": "favorite book not found"})
+	default:
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
+	}
+}
+
+func getUserIDFromContext(c *gin.Context) (int, bool) {
+	value, exists := c.Get("user_id")
+	if !exists {
+		return 0, false
+	}
+
+	userID, ok := value.(int)
+	if !ok || userID <= 0 {
+		return 0, false
+	}
+
+	return userID, true
+}

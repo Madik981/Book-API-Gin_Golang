@@ -18,7 +18,6 @@ func RegisterRoutes(r *gin.Engine, store *models.Store) {
 	r.POST("/auth/login", authHandler.Login)
 
 	r.GET("/books", bookHandler.ListBooks)
-	r.GET("/books/:id", bookHandler.GetBookByID)
 
 	r.GET("/authors", authorHandler.ListAuthors)
 
@@ -27,6 +26,10 @@ func RegisterRoutes(r *gin.Engine, store *models.Store) {
 	protected := r.Group("/")
 	protected.Use(AuthMiddleware(jwtSecret))
 	{
+		protected.GET("/books/favorites", bookHandler.ListFavoriteBooks)
+		protected.PUT("/books/:bookId/favorites", bookHandler.AddFavoriteBook)
+		protected.DELETE("/books/:bookId/favorites", bookHandler.RemoveFavoriteBook)
+
 		protected.POST("/books", bookHandler.CreateBook)
 		protected.PUT("/books/:id", bookHandler.UpdateBook)
 		protected.DELETE("/books/:id", bookHandler.DeleteBook)
@@ -34,6 +37,8 @@ func RegisterRoutes(r *gin.Engine, store *models.Store) {
 		protected.POST("/authors", authorHandler.CreateAuthor)
 		protected.POST("/categories", categoryHandler.CreateCategory)
 	}
+
+	r.GET("/books/:id", bookHandler.GetBookByID)
 }
 
 func resolveJWTSecret() []byte {
