@@ -10,6 +10,9 @@ Data is stored in PostgreSQL via GORM.
   - `POST /auth/login`
 - Book endpoints:
   - `GET /books` (with pagination + filters)
+  - `GET /books/favorites` (protected, paginated)
+  - `PUT /books/:bookId/favorites` (protected)
+  - `DELETE /books/:bookId/favorites` (protected)
   - `POST /books` (protected)
   - `GET /books/:id`
   - `PUT /books/:id` (protected)
@@ -255,6 +258,17 @@ No body.
 
 ## Notes
 
-- GORM runs `AutoMigrate` on startup for `authors`, `categories`, `books`, `users`.
+- GORM runs `AutoMigrate` on startup for `authors`, `categories`, `books`, `users`, `favorite_books`.
 - IDs are auto-incremented.
 - If `author_id` or `category_id` does not exist, creating/updating a book returns a `400` error.
+
+## Favorites Endpoints
+
+- `GET /books/favorites?page=1&limit=10`
+  - returns paginated favorite books for current user from JWT
+- `PUT /books/:bookId/favorites`
+  - adds book to favorites
+  - returns `204` when added, `409` if already favorite, `404` if book not found
+- `DELETE /books/:bookId/favorites`
+  - removes book from favorites
+  - returns `204` when removed, `404` if not found
