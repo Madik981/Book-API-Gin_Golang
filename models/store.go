@@ -85,6 +85,56 @@ func (s *Store) GetBook(id int) (Book, bool) {
 	return book, true
 }
 
+func (s *Store) ListFavoriteBooks(userID int, page int, limit int) PaginatedBooks {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10
+	}
+	if limit > 100 {
+		limit = 100
+	}
+
+	query := s.db.Table("books").
+		Joins("JOIN favorite_books ON favorite_books.book_id = books.id").
+		Where("favorite_books.user_id = ?", userID)
+
+	var total64 int64
+	if err := query.Count(&total64).Error; err != nil {
+		total64 = 0
+	}
+	total := int(total64)
+	totalPages := 0
+	if total > 0 {
+		totalPages = (total + limit - 1) / limit
+	}
+
+	start := (page - 1) * limit
+	if start > total {
+		start = total
+	}
+
+	pageData := make([]Book, 0)
+	if err := query.
+		Select("books.id, books.title, books.author_id, books.category_id, books.price").
+		Order("favorite_books.created_at DESC").
+		Order("books.id ASC").
+		Offset(start).
+		Limit(limit).
+		Find(&pageData).Error; err != nil {
+		pageData = []Book{}
+	}
+
+	return PaginatedBooks{
+		Data:       pageData,
+		Total:      total,
+		Page:       page,
+		Limit:      limit,
+		TotalPages: totalPages,
+	}
+}
+
 func (s *Store) CreateBook(input CreateBookInput) (Book, bool) {
 	if !s.recordExists(&Author{}, input.AuthorID) {
 		return Book{}, false
@@ -105,6 +155,43 @@ func (s *Store) CreateBook(input CreateBookInput) (Book, bool) {
 	}
 
 	return book, true
+}
+
+func (s *Store) AddFavoriteBook(userID int, bookID int) string {
+	if !s.recordExists(&User{}, userID) {
+		return "user_not_found"
+	}
+	if !s.recordExists(&Book{}, bookID) {
+		return "book_not_found"
+	}
+
+	var existing int64
+	if err := s.db.Model(&FavoriteBook{}).
+		Where("user_id = ? AND book_id = ?", userID, bookID).
+		Count(&existing).Error; err != nil {
+		return "error"
+	}
+	if existing > 0 {
+		return "already_exists"
+	}
+
+	favorite := FavoriteBook{UserID: userID, BookID: bookID}
+	if err := s.db.Create(&favorite).Error; err != nil {
+		return "error"
+	}
+
+	return ""
+}
+
+func (s *Store) RemoveFavoriteBook(userID int, bookID int) string {
+	result := s.db.Where("user_id = ? AND book_id = ?", userID, bookID).Delete(&FavoriteBook{})
+	if result.Error != nil {
+		return "error"
+	}
+	if result.RowsAffected == 0 {
+		return "not_found"
+	}
+	return ""
 }
 
 func (s *Store) UpdateBook(id int, input UpdateBookInput) (Book, string) {

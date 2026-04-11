@@ -36,7 +36,7 @@ func NewPostgresDBFromEnv() (*gorm.DB, error) {
 		return nil, err
 	}
 
-	if err := db.AutoMigrate(&Author{}, &Category{}, &Book{}, &User{}); err != nil {
+	if err := db.AutoMigrate(&Author{}, &Category{}, &Book{}, &User{}, &FavoriteBook{}); err != nil {
 		return nil, err
 	}
 
