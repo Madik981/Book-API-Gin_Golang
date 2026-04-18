@@ -132,7 +132,7 @@ func (h *BookHandler) AddFavoriteBook(c *gin.Context) {
 		return
 	}
 
-	bookID, err := strconv.Atoi(c.Param("bookId"))
+	bookID, err := strconv.Atoi(c.Param("id"))
 	if err != nil || bookID <= 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book id"})
 		return
@@ -160,7 +160,7 @@ func (h *BookHandler) RemoveFavoriteBook(c *gin.Context) {
 		return
 	}
 
-	bookID, err := strconv.Atoi(c.Param("bookId"))
+	bookID, err := strconv.Atoi(c.Param("id"))
 	if err != nil || bookID <= 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid book id"})
 		return

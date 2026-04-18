@@ -27,8 +27,8 @@ func RegisterRoutes(r *gin.Engine, store *models.Store) {
 	protected.Use(AuthMiddleware(jwtSecret))
 	{
 		protected.GET("/books/favorites", bookHandler.ListFavoriteBooks)
-		protected.PUT("/books/:bookId/favorites", bookHandler.AddFavoriteBook)
-		protected.DELETE("/books/:bookId/favorites", bookHandler.RemoveFavoriteBook)
+		protected.PUT("/books/:id/favorites", bookHandler.AddFavoriteBook)
+		protected.DELETE("/books/:id/favorites", bookHandler.RemoveFavoriteBook)
 
 		protected.POST("/books", bookHandler.CreateBook)
 		protected.PUT("/books/:id", bookHandler.UpdateBook)
